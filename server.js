@@ -17,13 +17,13 @@ wss.on('connection', (ws) => {
                 console.log(`[Kayıt] ${currentUser} bağlandı.`);
             }
 
-            if (data.type === 'message') {
-                const targetWs = clients.get(data.receiver);
-                if (targetWs && targetWs.readyState === WebSocket.OPEN) {
-                    targetWs.send(JSON.stringify(data));
-                    console.log(`[İletildi] ${data.sender} -> ${data.receiver}`);
-                }
-            }
+            if (data.type === 'message' || data.type === 'friend_request' || data.type === 'request_accepted') {
+            const targetWs = clients.get(data.receiver);
+            if (targetWs && targetWs.readyState === WebSocket.OPEN) {
+            targetWs.send(JSON.stringify(data));
+            console.log(`[İletildi - ${data.type}] ${data.sender} -> ${data.receiver}`);
+        }
+    }    
         } catch (e) {
             console.log('Hata:', e);
         }
