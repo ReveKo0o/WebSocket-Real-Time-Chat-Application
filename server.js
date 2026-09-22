@@ -29,6 +29,8 @@ wss.on('connection', (ws) => {
         }
     });
 
+// idk how this will be work but i dont think that will make some problem for me just trying best and idk praying ig
+
     ws.on('close', () => {
         if (currentUser) {
             clients.delete(currentUser);
