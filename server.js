@@ -14,7 +14,9 @@ wss.on('connection', (ws) => {
             if (data.type === 'register') {
                 currentUser = data.sender;
                 clients.set(currentUser, ws);
-                console.log(`[Register] ${currentUser} bağlandı.`);
+                console.log(`[Register] ${currentUser} connected.`);
+                
+                // if this shit will not work then idk really even ai cant write like this gosh
             }
 
             if (data.type === 'message' || data.type === 'friend_request' || data.type === 'request_accepted') {
