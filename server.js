@@ -9,13 +9,13 @@ const server = http.createServer((req, res) => {
     res.end('WebSocket server is active and running!\n');
 });
 
-// ping/pong desteği için ws options eklendi
+
 const wss = new WebSocket.Server({ server });
 
 const clients = new Map(); // username -> ws
 const groups = new Map();  // groupName -> Set of usernames
 
-// Bağlantıların kopmadığını anlamak için Heartbeat (Ping/Pong) fonksiyonu
+
 function heartbeat() {
     this.isAlive = true;
 }
@@ -36,7 +36,7 @@ wss.on('connection', (ws) => {
                 console.log(`[Register] ${currentUser} connected.`);
             }
 
-            // Özel Mesaj (DM)
+            
             if (data.type === 'message') {
                 const targetWs = clients.get(data.receiver);
                 if (targetWs && targetWs.readyState === WebSocket.OPEN) {
@@ -44,7 +44,7 @@ wss.on('connection', (ws) => {
                 }
             }
 
-            // DM Sohbete Giriş Duyurusu ("In the chat")
+            
             if (data.type === 'join_dm_presence') {
                 const targetWs = clients.get(data.receiver);
                 if (targetWs && targetWs.readyState === WebSocket.OPEN) {
@@ -82,7 +82,7 @@ wss.on('connection', (ws) => {
                 console.log(`[Group Join] ${username} joined ${groupName}. Members:`, memberList);
             }
 
-            // Grup Mesajı
+            
             if (data.type === 'group_message') {
                 const groupName = data.group;
                 const sender = data.sender;
@@ -110,7 +110,7 @@ wss.on('connection', (ws) => {
     });
 });
 
-// Ölü/Kopmuş bağlantıları temizleyen ve düşenleri gruptan çıkaran yardımcı fonksiyon
+
 function handleDisconnect(currentUser) {
     if (currentUser) {
         clients.delete(currentUser);
@@ -135,7 +135,7 @@ function handleDisconnect(currentUser) {
     }
 }
 
-// Her 30 saniyede bir tüm bağlı client'ları kontrol et, cevap vermeyenleri düşür
+
 const interval = setInterval(() => {
     wss.clients.forEach((ws) => {
         if (ws.isAlive === false) {
@@ -150,7 +150,7 @@ wss.on('close', () => {
     clearInterval(interval);
 });
 
-// Self-Ping (Render'ın uykusunu engellemek için)
+
 setInterval(() => {
     https.get('https://websocket-server-c1w9.onrender.com', (res) => {
         // console.log(`Keep-alive ping, status: ${res.statusCode}`);
