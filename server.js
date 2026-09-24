@@ -56,7 +56,7 @@ wss.on('connection', (ws) => {
                 }
             }
 
-            // Gruba Katılma ve Üyeleri Listeleme
+            
             if (data.type === 'join_group') {
                 const groupName = data.group;
                 const username = data.sender;
