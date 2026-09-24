@@ -12,23 +12,33 @@ wss.on('connection', (ws) => {
         try {
             const data = JSON.parse(message);
 
-            // 1. Kayıt Olma
             if (data.type === 'register') {
                 currentUser = data.sender;
                 clients.set(currentUser, ws);
                 console.log(`[Register] ${currentUser} connected.`);
             }
 
-            // 2. Özel Mesaj (DM)
+            // Özel Mesaj (DM)
             if (data.type === 'message') {
                 const targetWs = clients.get(data.receiver);
                 if (targetWs && targetWs.readyState === WebSocket.OPEN) {
                     targetWs.send(JSON.stringify(data));
-                    console.log(`[DM] ${data.sender} -> ${data.receiver}`);
                 }
             }
 
-            // 3. Gruba Katılma
+            // DM Sohbete Giriş Duyurusu ("In the chat")
+            if (data.type === 'join_dm_presence') {
+                const targetWs = clients.get(data.receiver);
+                if (targetWs && targetWs.readyState === WebSocket.OPEN) {
+                    targetWs.send(JSON.stringify({
+                        type: 'presence_notification',
+                        sender: data.sender,
+                        text: `${data.sender} is in the chat.`
+                    }));
+                }
+            }
+
+            // Gruba Katılma ve Üyeleri Listeleme
             if (data.type === 'join_group') {
                 const groupName = data.group;
                 const username = data.sender;
@@ -36,11 +46,26 @@ wss.on('connection', (ws) => {
                 if (!groups.has(groupName)) {
                     groups.set(groupName, new Set());
                 }
-                groups.get(groupName).add(username);
-                console.log(`[Group Join] ${username} joined group: ${groupName}`);
+                const members = groups.get(groupName);
+                members.add(username);
+
+                // Gruptakilere mevcut üye listesini ve yeni katılanı bildir
+                const memberList = Array.from(members);
+                memberList.forEach((member) => {
+                    const memberWs = clients.get(member);
+                    if (memberWs && memberWs.readyState === WebSocket.OPEN) {
+                        memberWs.send(JSON.stringify({
+                            type: 'group_update',
+                            group: groupName,
+                            members: memberList,
+                            notification: `${username} joined the group.`
+                        }));
+                    }
+                });
+                console.log(`[Group Join] ${username} joined ${groupName}. Members:`, memberList);
             }
 
-            // 4. Grup Mesajı
+            // Grup Mesajı
             if (data.type === 'group_message') {
                 const groupName = data.group;
                 const sender = data.sender;
@@ -48,7 +73,6 @@ wss.on('connection', (ws) => {
 
                 if (groupMembers) {
                     groupMembers.forEach((member) => {
-                        // Mesajı gönderen hariç gruptakilere ilet (veya istersen kendine de dönebilir)
                         if (member !== sender) {
                             const memberWs = clients.get(member);
                             if (memberWs && memberWs.readyState === WebSocket.OPEN) {
@@ -56,20 +80,35 @@ wss.on('connection', (ws) => {
                             }
                         }
                     });
-                    console.log(`[Group Message] ${sender} -> Group: ${groupName}`);
                 }
             }
 
         } catch (e) {
-            console.log('Error parsing message:', e);
+            console.log('Error:', e);
         }
     });
 
     ws.on('close', () => {
         if (currentUser) {
             clients.delete(currentUser);
-            // Gruplardan da çıkaralım
-            groups.forEach((members) => members.delete(currentUser));
+            groups.forEach((members, groupName) => {
+                if (members.has(currentUser)) {
+                    members.delete(currentUser);
+                    // Gruptan çıkma durumunu kalanlara bildir
+                    const memberList = Array.from(members);
+                    memberList.forEach((member) => {
+                        const mWs = clients.get(member);
+                        if (mWs && mWs.readyState === WebSocket.OPEN) {
+                            mWs.send(JSON.stringify({
+                                type: 'group_update',
+                                group: groupName,
+                                members: memberList,
+                                notification: `${currentUser} left the group.`
+                            }));
+                        }
+                    });
+                }
+            });
             console.log(`[Disconnected] ${currentUser} left.`);
         }
     });
