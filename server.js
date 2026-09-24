@@ -4,18 +4,26 @@ const https = require('https');
 
 const PORT = process.env.PORT || 3000;
 
-// Render'ın hem HTTP isteklerini (ping için) hem WebSocket'i aynı portta desteklemesi için HTTP sunucusu oluşturuyoruz
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('WebSocket server is active and running!\n');
 });
 
+// ping/pong desteği için ws options eklendi
 const wss = new WebSocket.Server({ server });
 
 const clients = new Map(); // username -> ws
 const groups = new Map();  // groupName -> Set of usernames
 
+// Bağlantıların kopmadığını anlamak için Heartbeat (Ping/Pong) fonksiyonu
+function heartbeat() {
+    this.isAlive = true;
+}
+
 wss.on('connection', (ws) => {
+    ws.isAlive = true;
+    ws.on('pong', heartbeat);
+
     let currentUser = null;
 
     ws.on('message', (message) => {
@@ -59,7 +67,6 @@ wss.on('connection', (ws) => {
                 const members = groups.get(groupName);
                 members.add(username);
 
-                // Gruptakilere mevcut üye listesini ve yeni katılanı bildir
                 const memberList = Array.from(members);
                 memberList.forEach((member) => {
                     const memberWs = clients.get(member);
@@ -99,41 +106,60 @@ wss.on('connection', (ws) => {
     });
 
     ws.on('close', () => {
-        if (currentUser) {
-            clients.delete(currentUser);
-            groups.forEach((members, groupName) => {
-                if (members.has(currentUser)) {
-                    members.delete(currentUser);
-                    // Gruptan çıkma durumunu kalanlara bildir
-                    const memberList = Array.from(members);
-                    memberList.forEach((member) => {
-                        const mWs = clients.get(member);
-                        if (mWs && mWs.readyState === WebSocket.OPEN) {
-                            mWs.send(JSON.stringify({
-                                type: 'group_update',
-                                group: groupName,
-                                members: memberList,
-                                notification: `${currentUser} left the group.`
-                            }));
-                        }
-                    });
-                }
-            });
-            console.log(`[Disconnected] ${currentUser} left.`);
-        }
+        handleDisconnect(currentUser);
     });
 });
 
-// Sunucunun uyumaması için her 4 dakikada bir (240000 ms) kendi kendine istek atması (Self-Ping)
+// Ölü/Kopmuş bağlantıları temizleyen ve düşenleri gruptan çıkaran yardımcı fonksiyon
+function handleDisconnect(currentUser) {
+    if (currentUser) {
+        clients.delete(currentUser);
+        groups.forEach((members, groupName) => {
+            if (members.has(currentUser)) {
+                members.delete(currentUser);
+                const memberList = Array.from(members);
+                memberList.forEach((member) => {
+                    const mWs = clients.get(member);
+                    if (mWs && mWs.readyState === WebSocket.OPEN) {
+                        mWs.send(JSON.stringify({
+                            type: 'group_update',
+                            group: groupName,
+                            members: memberList,
+                            notification: `${currentUser} left the group.`
+                        }));
+                    }
+                });
+            }
+        });
+        console.log(`[Disconnected] ${currentUser} left.`);
+    }
+}
+
+// Her 30 saniyede bir tüm bağlı client'ları kontrol et, cevap vermeyenleri düşür
+const interval = setInterval(() => {
+    wss.clients.forEach((ws) => {
+        if (ws.isAlive === false) {
+            return ws.terminate();
+        }
+        ws.isAlive = false;
+        ws.ping();
+    });
+}, 30000);
+
+wss.on('close', () => {
+    clearInterval(interval);
+});
+
+// Self-Ping (Render'ın uykusunu engellemek için)
 setInterval(() => {
-    // Render linkini buraya ekledik
     https.get('https://websocket-server-c1w9.onrender.com', (res) => {
-        console.log(`Keep-alive ping atıldı, durum kodu: ${res.statusCode}`);
+        // console.log(`Keep-alive ping, status: ${res.statusCode}`);
     }).on('error', (err) => {
-        console.error('Ping atılırken hata oluştu: ', err.message);
+        console.error('Ping error: ', err.message);
     });
 }, 240000);
 
 server.listen(PORT, () => {
+    pc = null;
     console.log(`WebSocket server running on port ${PORT}`);
 });
