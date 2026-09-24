@@ -2,7 +2,8 @@ const WebSocket = require('ws');
 const PORT = process.env.PORT || 3000;
 const wss = new WebSocket.Server({ port: PORT });
 
-const clients = new Map();
+const clients = new Map(); // username -> ws
+const groups = new Map();  // groupName -> Set of usernames
 
 wss.on('connection', (ws) => {
     let currentUser = null;
@@ -11,34 +12,67 @@ wss.on('connection', (ws) => {
         try {
             const data = JSON.parse(message);
 
+            // 1. Kayıt Olma
             if (data.type === 'register') {
                 currentUser = data.sender;
                 clients.set(currentUser, ws);
                 console.log(`[Register] ${currentUser} connected.`);
-                
-                // if this shit will not work then idk really even ai cant write like this gosh
             }
 
-            if (data.type === 'message' || data.type === 'friend_request' || data.type === 'request_accepted') {
-            const targetWs = clients.get(data.receiver);
-            if (targetWs && targetWs.readyState === WebSocket.OPEN) {
-            targetWs.send(JSON.stringify(data));
-            console.log(`[Sended - ${data.type}] ${data.sender} -> ${data.receiver}`);
-        }
-    }    
+            // 2. Özel Mesaj (DM)
+            if (data.type === 'message') {
+                const targetWs = clients.get(data.receiver);
+                if (targetWs && targetWs.readyState === WebSocket.OPEN) {
+                    targetWs.send(JSON.stringify(data));
+                    console.log(`[DM] ${data.sender} -> ${data.receiver}`);
+                }
+            }
+
+            // 3. Gruba Katılma
+            if (data.type === 'join_group') {
+                const groupName = data.group;
+                const username = data.sender;
+                
+                if (!groups.has(groupName)) {
+                    groups.set(groupName, new Set());
+                }
+                groups.get(groupName).add(username);
+                console.log(`[Group Join] ${username} joined group: ${groupName}`);
+            }
+
+            // 4. Grup Mesajı
+            if (data.type === 'group_message') {
+                const groupName = data.group;
+                const sender = data.sender;
+                const groupMembers = groups.get(groupName);
+
+                if (groupMembers) {
+                    groupMembers.forEach((member) => {
+                        // Mesajı gönderen hariç gruptakilere ilet (veya istersen kendine de dönebilir)
+                        if (member !== sender) {
+                            const memberWs = clients.get(member);
+                            if (memberWs && memberWs.readyState === WebSocket.OPEN) {
+                                memberWs.send(JSON.stringify(data));
+                            }
+                        }
+                    });
+                    console.log(`[Group Message] ${sender} -> Group: ${groupName}`);
+                }
+            }
+
         } catch (e) {
-            console.log('some bullshit that idk what happened:', e);
+            console.log('Error parsing message:', e);
         }
     });
-
-// idk how this will be work but i dont think that will make some problem for me just trying best and idk praying ig
 
     ws.on('close', () => {
         if (currentUser) {
             clients.delete(currentUser);
-            console.log(`[disconnected] ${currentUser} leaved.`);
+            // Gruplardan da çıkaralım
+            groups.forEach((members) => members.delete(currentUser));
+            console.log(`[Disconnected] ${currentUser} left.`);
         }
     });
 });
 
-console.log(`WebSocket server ${PORT} working on that port.`);
+console.log(`WebSocket server running on port ${PORT}`);
