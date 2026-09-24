@@ -1,6 +1,16 @@
 const WebSocket = require('ws');
+const http = require('http');
+const https = require('https');
+
 const PORT = process.env.PORT || 3000;
-const wss = new WebSocket.Server({ port: PORT });
+
+// Render'ın hem HTTP isteklerini (ping için) hem WebSocket'i aynı portta desteklemesi için HTTP sunucusu oluşturuyoruz
+const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('WebSocket server is active and running!\n');
+});
+
+const wss = new WebSocket.Server({ server });
 
 const clients = new Map(); // username -> ws
 const groups = new Map();  // groupName -> Set of usernames
@@ -114,4 +124,16 @@ wss.on('connection', (ws) => {
     });
 });
 
-console.log(`WebSocket server running on port ${PORT}`);
+// Sunucunun uyumaması için her 4 dakikada bir (240000 ms) kendi kendine istek atması (Self-Ping)
+setInterval(() => {
+    // Render linkini buraya ekledik
+    https.get('https://websocket-server-c1w9.onrender.com', (res) => {
+        console.log(`Keep-alive ping atıldı, durum kodu: ${res.statusCode}`);
+    }).on('error', (err) => {
+        console.error('Ping atılırken hata oluştu: ', err.message);
+    });
+}, 240000);
+
+server.listen(PORT, () => {
+    console.log(`WebSocket server running on port ${PORT}`);
+});
